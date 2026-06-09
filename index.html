@@ -45,7 +45,7 @@
 
         <section class="bg-slate-800 p-4 rounded-xl shadow-lg border border-slate-700">
             <label class="block text-sm font-semibold text-amber-400 mb-2 font-mono">BUSCADOR RÁPIDO DE JUGADOR:</label>
-            <input type="text" id="searchBar" oninput="searchPlayer()" placeholder="Ej: James, Messi, Mbappe..." class="w-full bg-slate-950 border border-slate-600 rounded-lg p-3 text-slate-200 focus:outline-none focus:border-amber-400 text-base">
+            <input type="text" id="searchBar" oninput="searchPlayer()" placeholder="Ej: Mbappe, James, Messi..." class="w-full bg-slate-950 border border-slate-600 rounded-lg p-3 text-slate-200 focus:outline-none focus:border-amber-400 text-base">
         </section>
 
         <section id="playersSection" class="hidden bg-slate-800 p-4 rounded-xl shadow-lg border border-slate-700">
@@ -90,7 +90,7 @@
             "Panamá (PAN)": ["Escudo", "Orlando Mosquera", "José Córdoba", "Michael Amir Murillo", "Eric Davis", "Fidel Escobar", "Adalberto Carrasquilla", "Aníbal Godoy", "Édgar Yoel Bárcenas", "Ismael Díaz", "José Fajardo", "Cecilio Waterman"]
         };
 
-        // Rellenado automático preventivo para países secundarios que no tengan array explícito arriba
+        // Rellenar automáticamente el resto de selecciones
         Object.values(gruposData).flat().forEach(p => {
             if(!jugadoresData[p]) {
                 jugadoresData[p] = ["Escudo", "Portero Titular", "Portero Suplente", "Defensa Central 1", "Defensa Central 2", "Lateral Derecho", "Lateral Izquierdo", "Mediocampista 1", "Mediocampista 2", "Mediocampista 3", "Extremo Derecho", "Extremo Izquierdo", "Delantero Centro", "Jugador de Recambio 1", "Jugador de Recambio 2", "Jugador de Recambio 3", "Jugador de Recambio 4", "Estrella Local"];
@@ -99,6 +99,11 @@
 
         let currentActiveTeam = "";
 
+        // Función auxiliar para quitar acentos/tildes y dejar todo limpio
+        function limpiarTexto(texto) {
+            return texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        }
+
         function loadTeams() {
             const grupo = document.getElementById("groupSelect").value;
             const container = document.getElementById("teamsContainer");
@@ -106,6 +111,7 @@
             
             container.innerHTML = "";
             document.getElementById("playersSection").classList.add("hidden");
+            document.getElementById("searchBar").value = ""; // Limpiar buscador al elegir grupo
             
             if (!grupo) {
                 section.classList.add("hidden");
@@ -125,7 +131,6 @@
         function loadPlayers(teamName, clickedBtn) {
             currentActiveTeam = teamName;
             
-            // Estilo visual del botón activo
             document.querySelectorAll("#teamsContainer button").forEach(b => b.classList.remove("bg-amber-500", "text-slate-950", "border-amber-400"));
             if(clickedBtn) {
                 clickedBtn.classList.add("bg-amber-500", "text-slate-950", "border-amber-400");
@@ -184,7 +189,6 @@
                 row.classList.add("bg-slate-950", "border-slate-800");
             }
 
-            // recalcular contador de la selección actual
             const total = jugadoresData[currentActiveTeam].length;
             let currentChecked = 0;
             for(let i=1; i<=total; i++) {
@@ -198,11 +202,16 @@
         }
 
         function searchPlayer() {
-            const query = document.getElementById("searchBar").value.toLowerCase();
+            const query = limpiarTexto(document.getElementById("searchBar").value);
             const container = document.getElementById("playersContainer");
             const section = document.getElementById("playersSection");
             
-            if(query.length < 2) return; // Esperar al menos 2 letras
+            if(query.length < 2) {
+                if(query.length === 0 && currentActiveTeam) {
+                    loadPlayers(currentActiveTeam, null);
+                }
+                return; 
+            }
             
             document.getElementById("groupSelect").value = "";
             document.getElementById("teamsSection").classList.add("hidden");
@@ -214,13 +223,14 @@
             Object.keys(jugadoresData).forEach(teamName => {
                 const prefix = teamName.split("(")[1].replace(")", "").trim();
                 jugadoresData[teamName].forEach((player, index) => {
-                    if(player.toLowerCase().includes(query)) {
+                    // Limpiamos de acentos tanto la búsqueda como el nombre del jugador en la base de datos
+                    if(limpiarTexto(player).includes(query)) {
                         const numCromo = index + 1;
                         const storageKey = `panini2026_${prefix}_${numCromo}`;
                         const isChecked = localStorage.getItem(storageKey) === "true";
 
                         const row = document.createElement("div");
-                        row.className = `flex items-center justify-between p-3 rounded-lg border bg-slate-950 border-slate-800`;
+                        row.className = `flex items-center justify-between p-3 rounded-lg border ${isChecked ? 'bg-emerald-950/40 border-emerald-500/50' : 'bg-slate-950 border-slate-800'}`;
                         row.innerHTML = `
                             <div class="flex items-center space-x-3 min-w-0">
                                 <span class="font-mono text-xs font-bold px-2 py-0.5 bg-slate-800 rounded text-amber-400 border border-slate-700">${prefix} ${numCromo}</span>
@@ -229,11 +239,27 @@
                                     <span class="text-[10px] text-slate-400 uppercase">${teamName.split(" (")[0]}</span>
                                 </div>
                             </div>
+                            <input type="checkbox" id="chk_${prefix}_${numCromo}" ${isChecked ? 'checked' : ''} 
+                                class="w-5 h-5 rounded bg-slate-900 border-slate-600 text-emerald-500 focus:ring-0 focus:ring-offset-0"
+                                onchange="togglePlayerSearch('${prefix}', ${numCromo}, this, this.parentElement)">
                         `;
                         container.appendChild(row);
                     }
                 });
             });
+        }
+
+        // Función especial para marcar desde la misma pantalla de búsqueda
+        function togglePlayerSearch(prefix, num, checkbox, rowElement) {
+            const storageKey = `panini2026_${prefix}_${num}`;
+            localStorage.setItem(storageKey, checkbox.checked);
+            if(checkbox.checked) {
+                rowElement.classList.remove("bg-slate-950", "border-slate-800");
+                rowElement.classList.add("bg-emerald-950/40", "border-emerald-500/50");
+            } else {
+                rowElement.classList.remove("bg-emerald-950/40", "border-emerald-500/50");
+                rowElement.classList.add("bg-slate-950", "border-slate-800");
+            }
         }
     </script>
 </body>
